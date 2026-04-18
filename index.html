@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>SWOT 四象限拖拽作业</title>
+<link rel="icon" href="data:,">
 <style>
   * { box-sizing: border-box; }
   body {
@@ -292,7 +293,15 @@
   <div id="toast" class="toast"></div>
 
 <script>
-const API_BASE = 'https://你的云函数地址';
+const API_BASE = 'https://请替换成你的腾讯云函数或API网关地址';
+
+function resolveApiBase() {
+  const base = (API_BASE || '').trim().replace(/\/$/, '');
+  if (!base || base.includes('请替换成你的') || base.includes('你的云函数地址')) {
+    throw new Error('请先把 swot.html 里的 API_BASE 改成你的真实后端地址，例如：https://abc.com');
+  }
+  return base;
+}
 
 const questionBank = [
   {text:'距茶园校区 5 分钟，学生客源 89%',type:'S',point:5},
@@ -526,7 +535,8 @@ async function submitHomework() {
 
   submitBtn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/submit`, {
+    const apiBase = resolveApiBase();
+    const res = await fetch(`${apiBase}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(submitData)

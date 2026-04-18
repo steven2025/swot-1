@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>教师统计后台</title>
+<link rel="icon" href="data:,">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -153,7 +154,15 @@
   </div>
 
 <script>
-const API_BASE = 'https://你的云函数地址';
+const API_BASE = 'https://请替换成你的腾讯云函数或API网关地址';
+
+function resolveApiBase() {
+  const base = (API_BASE || '').trim().replace(/\/$/, '');
+  if (!base || base.includes('请替换成你的') || base.includes('你的云函数地址')) {
+    throw new Error('请先把 stats.html 里的 API_BASE 改成你的真实后端地址，例如：https://abc.com');
+  }
+  return base;
+}
 let quadChart = null;
 let scoreChart = null;
 
@@ -247,7 +256,8 @@ function renderScoreChart(records) {
 
 async function load() {
   try {
-    const res = await fetch(`${API_BASE}/stats`);
+    const apiBase = resolveApiBase();
+    const res = await fetch(`${apiBase}/stats`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const records = Array.isArray(data.records) ? data.records : [];
