@@ -536,7 +536,7 @@ async function submitHomework() {
   submitBtn.disabled = true;
   try {
     const apiBase = resolveApiBase();
-    const res = await fetch(`${apiBase}/submit`, {
+    const res = await fetch(`${apiBase}/?action=submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(submitData)
