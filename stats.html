@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>教师统计后台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Microsoft YaHei", Arial, sans-serif;
+    background: #f4f7fb;
+    color: #0f172a;
+  }
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px 18px 32px;
+  }
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  h1 { margin: 0; font-size: 30px; }
+  .hint { color: #475569; }
+  button {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-weight: 700;
+    cursor: pointer;
+    background: #2563eb;
+    color: white;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .card, .panel {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(15,23,42,.05);
+  }
+  .card {
+    padding: 18px;
+  }
+  .card h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #475569;
+    font-weight: 600;
+  }
+  .metric {
+    font-size: 30px;
+    font-weight: 800;
+  }
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 20px;
+  }
+  .table-wrap {
+    overflow: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 12px 10px;
+    border-bottom: 1px solid #eef2f7;
+    vertical-align: top;
+  }
+  th { background: #f8fafc; }
+  .empty {
+    color: #64748b;
+    padding: 16px 0;
+  }
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .charts { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>教师统计后台</h1>
+        <div class="hint">自动读取学生提交结果并生成可视化统计</div>
+      </div>
+      <button id="reloadBtn">刷新数据</button>
+    </div>
+
+    <div class="grid">
+      <div class="card"><h3>提交人数</h3><div class="metric" id="totalSubmissions">0</div></div>
+      <div class="card"><h3>平均分</h3><div class="metric" id="avgScore">0</div></div>
+      <div class="card"><h3>最高分</h3><div class="metric" id="maxScore">0</div></div>
+      <div class="card"><h3>最低分</h3><div class="metric" id="minScore">0</div></div>
+    </div>
+
+    <div class="charts">
+      <div class="panel">
+        <h2>四象限正确率</h2>
+        <canvas id="quadChart" height="220"></canvas>
+      </div>
+      <div class="panel">
+        <h2>成绩分布</h2>
+        <canvas id="scoreChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>学生提交明细</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>提交时间</th>
+              <th>班级</th>
+              <th>姓名</th>
+              <th>学号</th>
+              <th>得分</th>
+              <th>已作答题数</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div id="empty" class="empty" style="display:none;">暂时还没有学生提交记录。</div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = 'https://你的云函数地址';
+let quadChart = null;
+let scoreChart = null;
+
+function setText(id, value) {
+  document.getElementById(id).textContent = value;
+}
+
+function renderTable(records) {
+  const tbody = document.getElementById('tbody');
+  const empty = document.getElementById('empty');
+  tbody.innerHTML = '';
+
+  if (!records.length) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  records.forEach(item => {
+    const tr = document.createElement('tr');
+    const answeredCount = Object.keys(item.userAnswers || {}).length;
+    tr.innerHTML = `
+      <td>${item.submitTime || ''}</td>
+      <td>${item.className || ''}</td>
+      <td>${item.name || ''}</td>
+      <td>${item.studentId || ''}</td>
+      <td>${Number(item.totalScore || 0)}</td>
+      <td>${answeredCount}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderQuadChart(summary) {
+  const data = [
+    summary.quadrantAccuracy?.S || 0,
+    summary.quadrantAccuracy?.W || 0,
+    summary.quadrantAccuracy?.O || 0,
+    summary.quadrantAccuracy?.T || 0
+  ];
+
+  if (quadChart) quadChart.destroy();
+  quadChart = new Chart(document.getElementById('quadChart'), {
+    type: 'bar',
+    data: {
+      labels: ['S 优势', 'W 劣势', 'O 机会', 'T 威胁'],
+      datasets: [{
+        label: '正确率(%)',
+        data
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, max: 100 } }
+    }
+  });
+}
+
+function buildBuckets(records) {
+  const ranges = ['0-20', '21-40', '41-60', '61-80', '81-100'];
+  const counts = [0, 0, 0, 0, 0];
+  records.forEach(r => {
+    const s = Number(r.totalScore || 0);
+    if (s <= 20) counts[0]++;
+    else if (s <= 40) counts[1]++;
+    else if (s <= 60) counts[2]++;
+    else if (s <= 80) counts[3]++;
+    else counts[4]++;
+  });
+  return { ranges, counts };
+}
+
+function renderScoreChart(records) {
+  const { ranges, counts } = buildBuckets(records);
+  if (scoreChart) scoreChart.destroy();
+  scoreChart = new Chart(document.getElementById('scoreChart'), {
+    type: 'bar',
+    data: {
+      labels: ranges,
+      datasets: [{
+        label: '人数',
+        data: counts
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, precision: 0 } }
+    }
+  });
+}
+
+async function load() {
+  try {
+    const res = await fetch(`${API_BASE}/stats`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const records = Array.isArray(data.records) ? data.records : [];
+    const summary = data.summary || {};
+
+    setText('totalSubmissions', summary.totalSubmissions || 0);
+    setText('avgScore', Number(summary.avgScore || 0).toFixed(1));
+    setText('maxScore', Number(summary.maxScore || 0));
+    setText('minScore', Number(summary.minScore || 0));
+
+    renderTable(records);
+    renderQuadChart(summary);
+    renderScoreChart(records);
+  } catch (err) {
+    console.error(err);
+    alert('读取统计失败，请检查接口地址或后端是否已部署。');
+  }
+}
+
+document.getElementById('reloadBtn').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>

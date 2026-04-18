@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SWOT 四象限拖拽作业</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Microsoft YaHei", Arial, sans-serif;
+    background: #f3f6fb;
+    color: #0f172a;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .title {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .user-badge {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 13px;
+  }
+  button {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .primary { background: #2563eb; color: #fff; }
+  .primary:disabled { opacity: .5; cursor: not-allowed; }
+  .secondary { background: #e2e8f0; color: #0f172a; }
+
+  .main-layout {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    min-height: calc(100vh - 72px);
+  }
+  .panel {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(15,23,42,.06);
+    border: 1px solid #e5e7eb;
+  }
+  .left-panel {
+    width: 32%;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 16px 18px 10px;
+    border-bottom: 1px solid #eef2f7;
+  }
+  .panel-header h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+  }
+  .panel-header p {
+    margin: 0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .pool {
+    position: relative;
+    flex: 1;
+    min-height: 720px;
+    overflow: auto;
+    background: linear-gradient(180deg, #fcfdff 0%, #f8fbff 100%);
+  }
+
+  .right-panel {
+    width: 68%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .quad {
+    position: relative;
+    min-height: 350px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .quad h3 {
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 18px;
+    color: #fff;
+  }
+  .quad .hint {
+    position: absolute;
+    right: 14px;
+    top: 16px;
+    color: rgba(255,255,255,.92);
+    font-size: 12px;
+  }
+  .quad-inner {
+    position: relative;
+    height: calc(100% - 54px);
+    min-height: 296px;
+    background-image:
+      linear-gradient(rgba(148,163,184,.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,.10) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  #S { border: 3px solid #22c55e; }
+  #S h3 { background: #22c55e; }
+  #W { border: 3px solid #f97316; }
+  #W h3 { background: #f97316; }
+  #O { border: 3px solid #3b82f6; }
+  #O h3 { background: #3b82f6; }
+  #T { border: 3px solid #ef4444; }
+  #T h3 { background: #ef4444; }
+
+  .item {
+    position: absolute;
+    width: 150px;
+    min-height: 52px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 10px 18px rgba(15,23,42,.16);
+    user-select: none;
+    touch-action: none;
+    cursor: grab;
+    border: 1px solid rgba(255,255,255,.12);
+  }
+  .item.dragging {
+    cursor: grabbing;
+    box-shadow: 0 20px 36px rgba(15,23,42,.24);
+    z-index: 9999 !important;
+  }
+
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(15,23,42,.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .login-card {
+    width: min(460px, 100%);
+    background: #fff;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.18);
+  }
+  .login-card h2 {
+    margin: 0 0 10px;
+    font-size: 24px;
+  }
+  .login-card p {
+    margin: 0 0 16px;
+    color: #475569;
+    line-height: 1.6;
+  }
+  .login-card input {
+    width: 100%;
+    padding: 12px 14px;
+    margin: 8px 0;
+    border-radius: 12px;
+    border: 1px solid #dbe3ef;
+    font-size: 15px;
+  }
+  .login-error {
+    min-height: 20px;
+    color: #dc2626;
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .login-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .login-row button { flex: 1; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: rgba(15,23,42,.92);
+    color: white;
+    padding: 12px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+    z-index: 12000;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 980px) {
+    .main-layout { flex-direction: column; }
+    .left-panel, .right-panel { width: 100%; min-width: 0; }
+    .right-panel { grid-template-columns: 1fr; }
+    .pool { min-height: 420px; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="title">SWOT 四象限拖拽作业</div>
+    <div class="top-actions">
+      <div id="userBadge" class="user-badge">未登录</div>
+      <button id="openLoginBtn" class="secondary">修改信息</button>
+      <button id="submitBtn" class="primary">提交作业</button>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <section class="panel left-panel">
+      <div class="panel-header">
+        <h2>题目区</h2>
+        <p>先确认登录信息，再把题目拖入 S / W / O / T 象限。题目可在象限内自由摆放，也可再次拖到其他象限或拖回题目区。</p>
+      </div>
+      <div class="pool" id="pool"></div>
+    </section>
+
+    <section class="right-panel">
+      <div class="panel quad" id="S">
+        <h3>S 优势</h3>
+        <span class="hint">可自由摆放</span>
+        <div class="quad-inner"></div>
+      </div>
+      <div class="panel quad" id="W">
+        <h3>W 劣势</h3>
+        <span class="hint">可自由摆放</span>
+        <div class="quad-inner"></div>
+      </div>
+      <div class="panel quad" id="O">
+        <h3>O 机会</h3>
+        <span class="hint">可自由摆放</span>
+        <div class="quad-inner"></div>
+      </div>
+      <div class="panel quad" id="T">
+        <h3>T 威胁</h3>
+        <span class="hint">可自由摆放</span>
+        <div class="quad-inner"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+      <h2>先确认登录信息</h2>
+      <p>未确认前不能作答。请先填写并确认姓名、学号、班级，确认后才可拖拽题目和提交作业。</p>
+      <input id="name" placeholder="姓名" />
+      <input id="sid" placeholder="学号" />
+      <input id="cls" placeholder="班级" />
+      <div id="loginError" class="login-error"></div>
+      <div class="login-row">
+        <button id="cancelLoginBtn" class="secondary">关闭</button>
+        <button id="confirmLoginBtn" class="primary">确认并开始答题</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+const API_BASE = 'https://你的云函数地址';
+
+const questionBank = [
+  {text:'距茶园校区 5 分钟，学生客源 89%',type:'S',point:5},
+  {text:'680㎡/186 台高配机器，规模区域第一',type:'S',point:5},
+  {text:'无烟分区环境，学生满意度 81%',type:'S',point:5},
+  {text:'3200 + 会员，复购率 65%，老客贡献 72% 营收',type:'S',point:5},
+  {text:'网咖 + 餐饮复合业态，餐饮收入占 18%',type:'S',point:5},
+  {text:'月房租 7.8 万，毛利率仅 32.8%',type:'W',point:5},
+  {text:'43% 设备老化，月故障 12 次',type:'W',point:5},
+  {text:'无线上引流，95% 自然到店',type:'W',point:5},
+  {text:'增值服务空白，盈利单一',type:'W',point:5},
+  {text:'夜间营业时间受限',type:'W',point:5},
+  {text:'校区 12000 学生，73% 有校外开黑刚需',type:'O',point:5},
+  {text:'校内电竞社团赛事需求，缺少专业场地',type:'O',point:5},
+  {text:'南门商圈人流同比 + 19%',type:'O',point:5},
+  {text:'高端包厢上座 85%，溢价空间大',type:'O',point:5},
+  {text:'黑网吧整治，正规店优势扩大',type:'O',point:5},
+  {text:'周边低价网吧 2.5 元 / 小时，低价客流失 22%',type:'T',point:5},
+  {text:'宿舍电脑、手游、电竞酒店分流严重',type:'T',point:5},
+  {text:'实名制、禁烟、消防严监管',type:'T',point:5},
+  {text:'寒暑假客流暴跌 75%',type:'T',point:5},
+  {text:'水电宽带成本上涨 8%',type:'T',point:5}
+];
+
+const containers = {
+  pool: document.getElementById('pool'),
+  S: document.querySelector('#S .quad-inner'),
+  W: document.querySelector('#W .quad-inner'),
+  O: document.querySelector('#O .quad-inner'),
+  T: document.querySelector('#T .quad-inner')
+};
+
+const loginOverlay = document.getElementById('loginOverlay');
+const userBadge = document.getElementById('userBadge');
+const openLoginBtn = document.getElementById('openLoginBtn');
+const confirmLoginBtn = document.getElementById('confirmLoginBtn');
+const cancelLoginBtn = document.getElementById('cancelLoginBtn');
+const submitBtn = document.getElementById('submitBtn');
+const loginError = document.getElementById('loginError');
+const toast = document.getElementById('toast');
+
+let studentInfo = null;
+let dragState = null;
+let zSeed = 10;
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function requireLogin() {
+  if (!studentInfo) {
+    loginOverlay.style.display = 'flex';
+    return false;
+  }
+  return true;
+}
+
+function setBadge() {
+  if (!studentInfo) {
+    userBadge.textContent = '未登录';
+    return;
+  }
+  userBadge.textContent = `${studentInfo.className}｜${studentInfo.name}｜${studentInfo.studentId}`;
+}
+
+function createItems() {
+  const list = shuffle(questionBank);
+  containers.pool.innerHTML = '';
+  const colGap = 12;
+  const itemW = 150;
+  const cols = 2;
+  list.forEach((q, index) => {
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.textContent = q.text;
+    item.dataset.text = q.text;
+    item.dataset.type = q.type;
+    item.dataset.point = String(q.point);
+    item.dataset.container = 'pool';
+    item.style.left = `${14 + (index % cols) * (itemW + colGap)}px`;
+    item.style.top = `${14 + Math.floor(index / cols) * 72}px`;
+    item.style.zIndex = ++zSeed;
+    bindDrag(item);
+    containers.pool.appendChild(item);
+  });
+  const rows = Math.ceil(list.length / cols);
+  containers.pool.style.minHeight = `${Math.max(720, 20 + rows * 72)}px`;
+}
+
+function bindDrag(item) {
+  item.addEventListener('pointerdown', (e) => {
+    if (!requireLogin()) return;
+    e.preventDefault();
+
+    const sourceKey = item.dataset.container;
+    const source = containers[sourceKey];
+    const sourceRect = source.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+
+    dragState = {
+      item,
+      from: sourceKey,
+      pointerId: e.pointerId,
+      offsetX: e.clientX - itemRect.left,
+      offsetY: e.clientY - itemRect.top,
+      width: itemRect.width,
+      height: itemRect.height
+    };
+
+    item.classList.add('dragging');
+    item.style.width = `${itemRect.width}px`;
+    item.style.height = `${itemRect.height}px`;
+    item.style.left = `${itemRect.left}px`;
+    item.style.top = `${itemRect.top}px`;
+    item.style.position = 'fixed';
+    item.style.zIndex = ++zSeed;
+    document.body.appendChild(item);
+    item.setPointerCapture(e.pointerId);
+  });
+
+  item.addEventListener('pointermove', (e) => {
+    if (!dragState || dragState.item !== item) return;
+    item.style.left = `${e.clientX - dragState.offsetX}px`;
+    item.style.top = `${e.clientY - dragState.offsetY}px`;
+  });
+
+  item.addEventListener('pointerup', (e) => finishDrag(e.clientX, e.clientY));
+  item.addEventListener('pointercancel', (e) => finishDrag(e.clientX, e.clientY));
+}
+
+function pickContainer(x, y) {
+  const order = ['S', 'W', 'O', 'T', 'pool'];
+  for (const key of order) {
+    const rect = containers[key].getBoundingClientRect();
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      return key;
+    }
+  }
+  return dragState ? dragState.from : 'pool';
+}
+
+function finishDrag(x, y) {
+  if (!dragState) return;
+  const { item, width, height } = dragState;
+  const targetKey = pickContainer(x, y);
+  const target = containers[targetKey];
+  const targetRect = target.getBoundingClientRect();
+
+  let left = x - targetRect.left - dragState.offsetX;
+  let top = y - targetRect.top - dragState.offsetY;
+
+  const maxLeft = Math.max(0, target.clientWidth - width - 4);
+  const maxTop = Math.max(0, target.scrollHeight - height - 4);
+  left = clamp(left, 4, maxLeft + 4);
+  top = clamp(top, 4, maxTop + 4);
+
+  item.classList.remove('dragging');
+  item.style.position = 'absolute';
+  item.style.width = `${width}px`;
+  item.style.height = `${height}px`;
+  item.style.left = `${left}px`;
+  item.style.top = `${top}px`;
+  item.style.zIndex = ++zSeed;
+  item.dataset.container = targetKey;
+  target.appendChild(item);
+
+  try { item.releasePointerCapture(dragState.pointerId); } catch (_) {}
+  dragState = null;
+}
+
+function buildAnswerRecord() {
+  const record = {};
+  const all = document.querySelectorAll('.item');
+  all.forEach(item => {
+    const placed = item.dataset.container;
+    if (placed === 'pool') return;
+    const correct = item.dataset.type;
+    const point = Number(item.dataset.point || 0);
+    record[item.dataset.text] = {
+      student: placed,
+      correct,
+      point: placed === correct ? point : 0,
+      maxPoint: point
+    };
+  });
+  return record;
+}
+
+function calcTotalScore(answerRecord) {
+  return Object.values(answerRecord).reduce((sum, item) => sum + Number(item.point || 0), 0);
+}
+
+async function submitHomework() {
+  if (!requireLogin()) {
+    showToast('请先确认登录信息');
+    return;
+  }
+
+  const answerRecord = buildAnswerRecord();
+  const totalScore = calcTotalScore(answerRecord);
+
+  if (!Object.keys(answerRecord).length) {
+    showToast('请先至少拖入 1 道题目再提交');
+    return;
+  }
+
+  const submitData = {
+    submitTime: new Date().toLocaleString(),
+    name: studentInfo.name,
+    studentId: studentInfo.studentId,
+    className: studentInfo.className,
+    totalScore,
+    userAnswers: answerRecord
+  };
+
+  submitBtn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(submitData)
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    showToast('提交成功');
+  } catch (err) {
+    console.error(err);
+    showToast('提交失败，请检查接口地址或网络');
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+function confirmLogin() {
+  const name = document.getElementById('name').value.trim();
+  const studentId = document.getElementById('sid').value.trim();
+  const className = document.getElementById('cls').value.trim();
+
+  if (!name || !studentId || !className) {
+    loginError.textContent = '姓名、学号、班级必须填写完整。';
+    return;
+  }
+
+  studentInfo = { name, studentId, className };
+  setBadge();
+  loginError.textContent = '';
+  loginOverlay.style.display = 'none';
+  showToast('信息确认成功，开始答题');
+}
+
+openLoginBtn.addEventListener('click', () => {
+  loginOverlay.style.display = 'flex';
+});
+confirmLoginBtn.addEventListener('click', confirmLogin);
+cancelLoginBtn.addEventListener('click', () => {
+  if (!studentInfo) {
+    loginError.textContent = '请先确认信息后再开始答题。';
+    return;
+  }
+  loginOverlay.style.display = 'none';
+});
+submitBtn.addEventListener('click', submitHomework);
+
+createItems();
+setBadge();
+</script>
+</body>
+</html>
