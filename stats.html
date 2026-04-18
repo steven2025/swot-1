@@ -27,6 +27,11 @@
     margin-bottom: 18px;
     flex-wrap: wrap;
   }
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
   h1 { margin: 0; font-size: 30px; }
   .hint { color: #475569; }
   button {
@@ -37,6 +42,9 @@
     cursor: pointer;
     background: #2563eb;
     color: white;
+  }
+  #exportBtn {
+    background: #0f766e;
   }
   .grid {
     display: grid;
@@ -50,9 +58,7 @@
     border-radius: 18px;
     box-shadow: 0 8px 30px rgba(15,23,42,.05);
   }
-  .card {
-    padding: 18px;
-  }
+  .card { padding: 18px; }
   .card h3 {
     margin: 0 0 10px;
     font-size: 15px;
@@ -69,16 +75,12 @@
     gap: 16px;
     margin-bottom: 18px;
   }
-  .panel {
-    padding: 16px;
-  }
+  .panel { padding: 16px; }
   .panel h2 {
     margin: 0 0 14px;
     font-size: 20px;
   }
-  .table-wrap {
-    overflow: auto;
-  }
+  .table-wrap { overflow: auto; }
   table {
     width: 100%;
     border-collapse: collapse;
@@ -89,11 +91,17 @@
     padding: 12px 10px;
     border-bottom: 1px solid #eef2f7;
     vertical-align: top;
+    white-space: nowrap;
   }
   th { background: #f8fafc; }
   .empty {
     color: #64748b;
     padding: 16px 0;
+  }
+  .subhint {
+    color: #64748b;
+    font-size: 13px;
+    margin-top: 6px;
   }
   @media (max-width: 980px) {
     .grid { grid-template-columns: repeat(2, 1fr); }
@@ -101,6 +109,8 @@
   }
   @media (max-width: 560px) {
     .grid { grid-template-columns: 1fr; }
+    .actions { width: 100%; }
+    .actions button { flex: 1; }
   }
 </style>
 </head>
@@ -111,7 +121,10 @@
         <h1>教师统计后台</h1>
         <div class="hint">自动读取学生提交结果并生成可视化统计</div>
       </div>
-      <button id="reloadBtn">刷新数据</button>
+      <div class="actions">
+        <button id="reloadBtn">刷新数据</button>
+        <button id="exportBtn">下载学生明细表 CSV</button>
+      </div>
     </div>
 
     <div class="grid">
@@ -134,6 +147,7 @@
 
     <div class="panel">
       <h2>学生提交明细</h2>
+      <div class="subhint">支持一键下载 CSV，Excel 可直接打开。四象限正确率按整套题统计：每个象限固定 5 题，未作答也计入分母。</div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -144,6 +158,10 @@
               <th>学号</th>
               <th>得分</th>
               <th>已作答题数</th>
+              <th>S正确数</th>
+              <th>W正确数</th>
+              <th>O正确数</th>
+              <th>T正确数</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -163,11 +181,27 @@ function resolveApiBase() {
   }
   return base;
 }
+
 let quadChart = null;
 let scoreChart = null;
+let currentRecords = [];
 
 function setText(id, value) {
   document.getElementById(id).textContent = value;
+}
+
+function countQuadrantCorrect(item) {
+  const result = { S: 0, W: 0, O: 0, T: 0 };
+  const answers = item.userAnswers || {};
+  Object.values(answers).forEach(ans => {
+    if (!ans || !ans.correct || !result.hasOwnProperty(ans.correct)) return;
+    if (ans.student === ans.correct) result[ans.correct] += 1;
+  });
+  return result;
+}
+
+function getAnsweredCount(item) {
+  return Object.keys(item.userAnswers || {}).length;
 }
 
 function renderTable(records) {
@@ -183,7 +217,8 @@ function renderTable(records) {
 
   records.forEach(item => {
     const tr = document.createElement('tr');
-    const answeredCount = Object.keys(item.userAnswers || {}).length;
+    const answeredCount = getAnsweredCount(item);
+    const correctMap = countQuadrantCorrect(item);
     tr.innerHTML = `
       <td>${item.submitTime || ''}</td>
       <td>${item.className || ''}</td>
@@ -191,6 +226,10 @@ function renderTable(records) {
       <td>${item.studentId || ''}</td>
       <td>${Number(item.totalScore || 0)}</td>
       <td>${answeredCount}</td>
+      <td>${correctMap.S}</td>
+      <td>${correctMap.W}</td>
+      <td>${correctMap.O}</td>
+      <td>${correctMap.T}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -254,6 +293,57 @@ function renderScoreChart(records) {
   });
 }
 
+function csvEscape(value) {
+  const text = String(value == null ? '' : value).replace(/"/g, '""');
+  return `"${text}"`;
+}
+
+function buildCsv(records) {
+  const headers = [
+    '提交时间', '班级', '姓名', '学号', '得分', '已作答题数',
+    'S正确数', 'W正确数', 'O正确数', 'T正确数', '答题明细JSON'
+  ];
+
+  const rows = records.map(item => {
+    const correctMap = countQuadrantCorrect(item);
+    return [
+      item.submitTime || '',
+      item.className || '',
+      item.name || '',
+      item.studentId || '',
+      Number(item.totalScore || 0),
+      getAnsweredCount(item),
+      correctMap.S,
+      correctMap.W,
+      correctMap.O,
+      correctMap.T,
+      JSON.stringify(item.userAnswers || {}, null, 0)
+    ].map(csvEscape).join(',');
+  });
+
+  return '\ufeff' + [headers.map(csvEscape).join(','), ...rows].join('\r\n');
+}
+
+function downloadCsv() {
+  if (!currentRecords.length) {
+    alert('当前没有可导出的学生记录。');
+    return;
+  }
+
+  const csv = buildCsv(currentRecords);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  link.href = url;
+  link.download = `学生提交明细_${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 async function load() {
   try {
     const apiBase = resolveApiBase();
@@ -262,6 +352,8 @@ async function load() {
     const data = await res.json();
     const records = Array.isArray(data.records) ? data.records : [];
     const summary = data.summary || {};
+
+    currentRecords = records;
 
     setText('totalSubmissions', summary.totalSubmissions || 0);
     setText('avgScore', Number(summary.avgScore || 0).toFixed(1));
@@ -278,6 +370,7 @@ async function load() {
 }
 
 document.getElementById('reloadBtn').addEventListener('click', load);
+document.getElementById('exportBtn').addEventListener('click', downloadCsv);
 load();
 </script>
 </body>
